@@ -1,0 +1,56 @@
+$computers =  @('NZS099VMW01D') #(Get-ADDomainController -Filter * -Server 'prod01.inroot.net').name
+$maxThreads = 5
+ 
+$block = {
+    Param([string]$computer)
+ 
+    $params = @{
+        ComputerName = $computer;
+        ErrorAction = "Stop";
+        ScriptBlock = {
+            $eventLogs = Get-WmiObject Win32_NTEventLogFile | 
+                Where-Object {$_.LogFileName -like "Directory Service"}
+ 
+            # Set LogFileSize
+            #Limit-EventLog -LogName "Directory Service" -MaximumSize 30MB
+            #$eventLogs = Get-WmiObject Win32_NTEventLogFile | where {$_.LogFileName -like "Directory Service"}
+            
+            $eventLogs | add-member -membertype noteproperty -name ComputerName -value $env:COMPUTERNAME
+            return $eventLogs
+        }
+    }
+    try {
+        Invoke-Command @params
+    } catch {
+        Write-Warning -Message "Failed to execute on $($computer) because $($_.Exception.Message)"
+    }
+}
+ 
+# Remove all jobs
+Get-Job | Remove-Job
+ 
+# Start the jobs. Max $maxThreads jobs running simultaneously.
+foreach ($computer in $computers) {
+    while ($(Get-Job -state running).count -ge $maxThreads){
+        Start-Sleep -Milliseconds 3
+    }
+    Write-Output "Running a script on $($computer)..."
+    Start-Job -Scriptblock $block -ArgumentList $computer | Out-Null
+}
+# Wait for all jobs to finish.
+while ($(Get-Job -State Running).count -gt 0) {
+    start-sleep 1
+}
+# Get information from each job.
+$result = @()
+ 
+foreach ($job in Get-Job) {
+    $jobOutput = Receive-Job $job
+    $result += $jobOutput | Select-Object *
+    #$result += $jobOutput | Select-Object __SERVER,LogfileName,MaxFileSize,FileSize,ComputerName
+}
+ 
+$result | Out-GridView
+ 
+# Remove all jobs created.
+Get-Job | Remove-Job
