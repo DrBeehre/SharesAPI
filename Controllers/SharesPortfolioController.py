@@ -4,7 +4,7 @@ sys.path.insert(1, 'H:\Coding\Python\SharesAPI\Services')
 import GatherService
 
 #Creds
-email = 'wardbeehre@gmail.com'
-password = 'BarKeri12345'
+email = input("Please enter an email: ")
+password = input("Please enter a password: ")
 
 GatherService.get_values(email, password)
